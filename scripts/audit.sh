@@ -63,5 +63,24 @@ if writable=$(find /var/www/devops-site -perm -o+w) &&
 fi
 check "Нет записи для всех, права ключа 600" "yes" "$permissions_ok"
 
+
+echo "[5] Контейнеризация"
+check "Docker активен" "active" "$(systemctl is-active docker)"
+
+check "PostgreSQL healthy" "healthy" \
+  "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null)"
+
+ports_ok=yes
+while read -r address; do
+    case "$address" in
+        127.0.0.1:5000|127.0.0.1:5432) ;;
+        *:5000|*:5432) ports_ok=no ;;
+    esac
+done < <(ss -H -ltn | awk '{print $4}')
+check "Порты 5000/5432 доступны только локально" "yes" "$ports_ok"
+
+check "Права .env равны 600" "600" \
+  "$(stat -c '%a' "$HOME/app/.env" 2>/dev/null)"
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1

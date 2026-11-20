@@ -157,3 +157,59 @@ sudo nginx -t && sudo systemctl reload nginx
 Закрытый ключ TLS в репозитории не хранится.
 
 Снимок после настройки HTTPS: 04-nginx-https.
+
+## 9. Контейнеризация
+
+Docker Engine установлен из официального репозитория Docker для Ubuntu.
+Пакеты: docker-ce, docker-ce-cli, containerd.io,
+docker-buildx-plugin, docker-compose-plugin.
+Проверенные версии: Docker Engine 29.10.0, Compose v5.8.0.
+Пользователь devops входит в группу docker.
+
+Исходные файлы находятся в app/ репозитория.
+Рабочий проект на сервере: /home/devops/app.
+Файл /home/devops/app/.env содержит случайный пароль PostgreSQL,
+имеет права 600 и исключён из Git и контекста сборки.
+Шаблон переменных: app/.env.example.
+
+Образ devops-app:1.1 основан на python:3.12-slim.
+Приложение запускается от пользователя app через Gunicorn.
+Из-за ошибки DNS внутри сборки использована команда:
+docker build --network=host --progress=plain -t devops-app:1.1 .
+
+Запуск на сервере из ~/app:
+docker compose up -d --no-build
+
+Сервисы: app и db (postgres:16-alpine).
+Сеть проекта: app_backend.
+Именованный том PostgreSQL: app_db_data.
+Приложение опубликовано только на 127.0.0.1:5000.
+Порт PostgreSQL 5432 на хосте не опубликован.
+Запуск приложения ожидает healthy-состояния базы.
+
+docker compose down сохраняет том и счётчик.
+docker compose down -v удаляет данные; использовалось только
+для учебного теста сброса счётчика.
+
+В HTTPS-блок /etc/nginx/sites-available/devops-site добавлено:
+
+    location /app/ {
+        proxy_pass http://127.0.0.1:5000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+Статическая главная страница сохранена.
+Приложение: https://devops.local/app/
+Проверка здоровья: https://devops.local/app/health
+
+При остановке app Nginx возвращает 502, журнал содержит
+connect() failed (111: Connection refused).
+После docker compose start app ответ восстанавливается до 200.
+
+Раздел [5] scripts/audit.sh проверяет Docker, здоровье базы,
+локальную публикацию портов и права .env.
+Проверены коды 0 и 1 при временной публикации 5000 на всех адресах.
+Создан снимок VirtualBox 05-docker-compose.
